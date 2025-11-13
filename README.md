@@ -25,7 +25,8 @@
       <button id="restart" class="btn">Neustarten</button>
       <button id="upgradeSpeed" class="upgrade">Upgrade: Schnellere Schüsse (Kosten: 100)</button>
       <button id="upgradeDamage" class="upgrade">Upgrade: Stärkerer Honig (Kosten: 150)</button>
-      <div style="margin-left:12px;color:#444;font-size:14px">Klicke, um Honig zu schießen. Halte gedrückt für Dauerfeuer!</div>
+      <button id="upgradeMulti" class="upgrade">Upgrade: Mehrfachschuss (Kosten: 1000)</button>
+      <div style="margin-left:12px;color:#444;font-size:14px">Bewege die Maus, um zu zielen, und klicke, um Honig zu schießen!</div>
     </div>
     <canvas id="c" width="800" height="500"></canvas>
   </div>
@@ -39,6 +40,7 @@
   const restartBtn = document.getElementById('restart');
   const upgradeSpeedBtn = document.getElementById('upgradeSpeed');
   const upgradeDamageBtn = document.getElementById('upgradeDamage');
+  const upgradeMultiBtn = document.getElementById('upgradeMulti');
 
   let W = canvas.width, H = canvas.height;
   function resize() {
@@ -52,24 +54,25 @@
   let score = 0, hits = 0;
   let mouseDown = false;
   let lastShot = 0;
-  let SHOT_COOLDOWN = 100; // kürzerer Delay
+  let SHOT_COOLDOWN = 100;
   let bulletDamage = 1;
-  let lastTime = performance.now();
+  let multiShot = false;
+  let shooterX = W / 2;
 
   function rand(min,max){return Math.random()*(max-min)+min}
 
   class Bee{
     constructor(x,y,level=1){
-      this.x=x;this.y=y;this.vx=rand(-1.2,1.2);this.vy=rand(-0.7,0.7);
+      this.x=x;this.y=y;this.vx=rand(-2,2);this.vy=rand(-1.5,1.5);
       this.r = 18 + level*4;
       this.level = level;
       this.hp = level;
       this.wiggle = rand(0,Math.PI*2);
     }
-    update(dt){
-      this.wiggle += dt*0.01;
-      this.x += this.vx + Math.sin(this.wiggle)*0.6;
-      this.y += this.vy + Math.cos(this.wiggle)*0.3;
+    update(){
+      this.wiggle += 0.05;
+      this.x += this.vx + Math.sin(this.wiggle)*2;
+      this.y += this.vy + Math.cos(this.wiggle)*1.5;
       if(this.x < this.r) {this.x = this.r; this.vx *= -1}
       if(this.x > W-this.r) {this.x = W-this.r; this.vx *= -1}
       if(this.y < this.r) {this.y = this.r; this.vy *= -1}
@@ -89,17 +92,18 @@
       ctx.beginPath(); ctx.ellipse(this.r*0.25, -this.r*0.9, this.r*0.6, this.r*0.35, 0.4, 0, Math.PI*2); ctx.fill();
       ctx.globalAlpha = 1;
       ctx.fillStyle='#111'; ctx.beginPath(); ctx.arc(this.r*0.45, -this.r*0.05, this.r*0.12,0,Math.PI*2); ctx.fill();
+      ctx.restore();
     }
   }
 
   class Bullet{
-    constructor(x,y,dx,dy){this.x=x;this.y=y;this.vx=dx;this.vy=dy;this.r=7}
-    update(dt){this.x += this.vx*dt*0.06; this.y += this.vy*dt*0.06}
+    constructor(x,y,dx,dy){this.x=x;this.y=y;this.vx=dx*10;this.vy=dy*10;this.r=7}
+    update(){this.x += this.vx; this.y += this.vy;}
     draw(ctx){ctx.beginPath(); ctx.arc(this.x,this.y,this.r,0,Math.PI*2); ctx.fillStyle='#d97706'; ctx.fill();}
   }
 
   class Particle{constructor(x,y,vx,vy,life){this.x=x;this.y=y;this.vx=vx;this.vy=vy;this.life=life;this.max=life}
-    update(dt){this.x+=this.vx*dt*0.06;this.y+=this.vy*dt*0.06;this.life-=dt*0.06}
+    update(){this.x+=this.vx;this.y+=this.vy;this.life-=1}
     draw(ctx){if(this.life<=0)return;ctx.globalAlpha=this.life/this.max;ctx.beginPath();ctx.arc(this.x,this.y,3,0,Math.PI*2);ctx.fillStyle='#ffb547';ctx.fill();ctx.globalAlpha=1}
   }
 
@@ -112,10 +116,14 @@
   for(let i=0;i<5;i++)spawnBee();
 
   function shoot(targetX,targetY){
-    const x=W/2,y=H;
+    const x=shooterX,y=H-40;
     const dx=targetX-x,dy=targetY-y,dist=Math.hypot(dx,dy)||1;
-    const speed=9;
-    bullets.push(new Bullet(x,y,dx/dist*speed,dy/dist*speed));
+    const vx=dx/dist,vy=dy/dist;
+    bullets.push(new Bullet(x,y,vx,vy));
+    if(multiShot){
+      bullets.push(new Bullet(x,y,vx*0.9-vy*0.3,vy*0.9+vx*0.3));
+      bullets.push(new Bullet(x,y,vx*0.9+vy*0.3,vy*0.9-vx*0.3));
+    }
   }
 
   function checkCollisions(){
@@ -130,6 +138,7 @@
           hits++;hitsEl.textContent=hits;
           if(bee.hp<=0){
             score+=bee.level*10;
+            for(let p=0;p<15;p++)particles.push(new Particle(bee.x,bee.y,rand(-2,2),rand(-2,2),30));
             bees.splice(bI,1);
           }else score+=5;
           scoreEl.textContent=score;
@@ -140,44 +149,84 @@
   }
 
   function drawShooter(ctx){
-    const x=W/2,y=H-24;
+    const y=H-24;
     ctx.save();
-    ctx.translate(x,y);
-    ctx.fillStyle='#6b705c'; ctx.beginPath(); ctx.roundRect(-40,-8,80,16,8); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(0,-36,18,20,0,0,Math.PI*2); ctx.fillStyle='#e9c46a'; ctx.fill();
+    ctx.translate(shooterX,y);
+    ctx.fillStyle='#6b705c';
+    ctx.beginPath();
+    ctx.rect(-40,-8,80,16);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(0,-36,18,20,0,0,Math.PI*2);
+    ctx.fillStyle='#e9c46a';
+    ctx.fill();
     ctx.restore();
   }
 
-  function loop(now){
-    const dt=now-lastTime; lastTime=now;
-    if(Math.random()<0.01+Math.min(0.06,score*0.0006)) spawnBee();
-    bees.forEach(b=>b.update(dt));
-    bullets.forEach(b=>b.update(dt));
-    particles.forEach(p=>p.update(dt));
-    checkCollisions();
+  let spawnTimer=0;
+
+  function loop(){
     ctx.clearRect(0,0,W,H);
+    spawnTimer++;
+    if(spawnTimer>=60){
+      spawnTimer=0;
+      if(bees.length<20){spawnBee();}
+    }
+
+    bees.forEach(b=>b.update());
+    bullets.forEach(b=>b.update());
+    particles.forEach(p=>p.update());
+    checkCollisions();
+
     bees.forEach(b=>b.draw(ctx));
     bullets.forEach(b=>b.draw(ctx));
+    particles.forEach(p=>p.draw(ctx));
     drawShooter(ctx);
+
     requestAnimationFrame(loop);
   }
 
-  canvas.addEventListener('mousedown',e=>{mouseDown=true;attemptShoot(e)});
-  canvas.addEventListener('mouseup',()=>mouseDown=false);
+  let lastPointer = {x: W / 2, y: H / 2};
+
+  canvas.addEventListener('mousemove', e => {
+    const p = getCanvasPos(e);
+    shooterX = p.x; // Spieler bewegt den Schützen
+    lastPointer = p;
+  });
+
+  canvas.addEventListener('mousedown', e => {
+    mouseDown = true;
+    lastPointer = getCanvasPos(e);
+    attemptShoot(e);
+  });
+  canvas.addEventListener('mouseup', () => mouseDown = false);
+
+  setInterval(() => {
+    if (mouseDown) attemptShoot({clientX: lastPointer.x, clientY: lastPointer.y});
+  }, SHOT_COOLDOWN);
+
   function getCanvasPos(e){const rect=canvas.getBoundingClientRect();return{x:(e.clientX-rect.left)*(canvas.width/rect.width),y:(e.clientY-rect.top)*(canvas.height/rect.height)}}
-  function attemptShoot(e){const now=performance.now();if(now-lastShot<SHOT_COOLDOWN)return;lastShot=now;const p=getCanvasPos(e);shoot(p.x,p.y);}
-  setInterval(()=>{if(mouseDown&&window._lastPointer)attemptShoot(window._lastPointer)},80);
-  window.addEventListener('pointermove',e=>window._lastPointer=e);
+
+  function attemptShoot(e){
+    const now = performance.now();
+    if (now - lastShot < SHOT_COOLDOWN) return;
+    lastShot = now;
+    const p = getCanvasPos(e);
+    shoot(p.x, p.y);
+  }
 
   restartBtn.addEventListener('click',()=>{bees=[];bullets=[];particles=[];score=0;hits=0;scoreEl.textContent='0';hitsEl.textContent='0';for(let i=0;i<5;i++)spawnBee();});
 
-  // Upgrade-System
   upgradeSpeedBtn.addEventListener('click',()=>{
     if(score>=100){score-=100;SHOT_COOLDOWN=Math.max(40,SHOT_COOLDOWN-20);scoreEl.textContent=score;upgradeSpeedBtn.textContent='Upgrade: Schnellere Schüsse ✅';}
   });
 
   upgradeDamageBtn.addEventListener('click',()=>{
     if(score>=150){score-=150;bulletDamage+=1;scoreEl.textContent=score;upgradeDamageBtn.textContent='Upgrade: Stärkerer Honig ✅';}
+  });
+
+  upgradeMultiBtn.addEventListener('click',()=>{
+    if(score>=1000){score-=1000;multiShot=true;scoreEl.textContent=score;upgradeMultiBtn.textContent='Upgrade: Mehrfachschuss ✅';}
   });
 
   requestAnimationFrame(loop);
