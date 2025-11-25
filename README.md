@@ -108,8 +108,22 @@
   canvas.addEventListener('mousemove', e => { lastPointer=getCanvasPos(e); shooterTargetX=lastPointer.x; });
   canvas.addEventListener('mousedown', e => { mouseDown=true; e.preventDefault(); lastPointer=getCanvasPos(e); attemptShoot(e); });
   window.addEventListener('mouseup', e => { mouseDown=false; });
-  canvas.addEventListener('touchstart', e => { mouseDown=true; e.preventDefault(); lastPointer=getCanvasPos(e.touches[0]); attemptShoot(e.touches[0]);},{passive:false});
-  canvas.addEventListener('touchend', e => { mouseDown=false; });
+  canvas.addEventListener('touchstart', e => {
+      mouseDown = true;
+      e.preventDefault();
+      const t = e.touches[0];
+      lastPointer = getCanvasPos(t);
+      shooterTargetX = lastPointer.x;
+      attemptShoot(t);
+    }, { passive: false });
+  canvas.addEventListener('touchend', e => { mouseDown = false; });
+
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const t = e.touches[0];
+      lastPointer = getCanvasPos(t);
+      shooterTargetX = lastPointer.x;
+    }, { passive: false });
   function getCanvasPos(e){ const rect=canvas.getBoundingClientRect(); return {x:(e.clientX-rect.left)*(canvas.width/rect.width),y:(e.clientY-rect.top)*(canvas.height/rect.height)}; }
   function attemptShoot(e){ const now=performance.now(); if(now-lastShot<SHOT_COOLDOWN)return; lastShot=now; const p=getCanvasPos(e); shoot(p.x,p.y); }
 
